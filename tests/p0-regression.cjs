@@ -113,7 +113,7 @@ async function checkCorrection() {
   const document = { createElement: () => new Element(), getElementById: get };
   const variants = Array.from({ length: 34 }, (_, id) => ({ id, red: false }));
   const context = {
-    document, Riichi: engine, BoardVision: { inspect: vision.inspect, sourceImage: value => value },
+    document, Riichi: engine, BoardVision: { inspect: vision.inspect, auditBoard: vision.auditBoard, sourceImage: value => value },
     TileVision: { variants, art: () => new Element() },
     createImageBitmap: async value => value, setTimeout
   };
@@ -132,7 +132,28 @@ async function checkCorrection() {
   assert(!marker('自家牌河第 3 张').className.includes('uncertain'));
   marker('对家牌河第 7 张').onclick();
   pick('8索');
-  assert.equal(get('results').children.find(element => element.className === 'result-list').children.length, 3);
+  const list=()=>get('results').children.find(element=>element.className==='result-list');
+  assert.equal(list().children.length, 3);
+  const ownBefore=engine.parse(get('own').value);
+  marker('自家牌河第 1 张').onclick();
+  get('correction').children.find(element=>element.textContent==='后移一张').onclick();
+  assert.deepEqual(engine.parse(get('own').value), [ownBefore[1],ownBefore[0],...ownBefore.slice(2)]);
+  assert.deepEqual(['hand','indicators','melds','river0','river2'].map(id=>get(id).value),
+    [snapshot[0],snapshot[1],snapshot[2],snapshot[3],snapshot[5]]);
+  assert.equal(list().children.length,3);
+
+  get('manual').events.click();
+  get('hand').value='19m12345p1234567s';
+  get('river0').value='23z';
+  get('river2').value='19m';
+  get('mode').value='defense';
+  get('events').value=['上1 立直','下1','上2','下2','自 摸牌'].join('\n');
+  get('events').events.change();
+  const top=()=>list().children[0].children[0].children[2].textContent;
+  assert.equal(top(),'切 1万');
+  get('declaration0').value='2';
+  get('declaration0').events.change();
+  assert.equal(top(),'切 9万');
 }
 
 (async () => {

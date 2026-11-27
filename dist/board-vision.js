@@ -74,7 +74,7 @@
       if(cost<(ranked.get(key)??Infinity))ranked.set(key,cost);
     }
     const [[code,error],second]=[...ranked].sort((a,b)=>a[1]-b[1]);
-    return {tile:root.Riichi.parse(code)[0],code,error,margin:second[1]-error};
+    return {tile:root.Riichi.parse(code)[0],code,error,margin:second[1]-error,paper:seen.paper};
   }
   const confident=(result,max=.39,margin=.055)=>result.tile&&result.error<=max&&result.margin>=margin;
   function matchFace(image,region,templates,max,margin) {
@@ -297,7 +297,7 @@
             const coverage=faceCoverage(image,quad);
             if(coverage<.32)continue;
             const r=match(image,quad.slice(rotation).concat(quad.slice(0,rotation)),allowed);
-            if(r.tile)candidates.push({...r,quad,coverage});
+            if(r.tile)candidates.push({...r,quad,coverage,rotation});
           }
         }
         if(!candidates.length){
@@ -310,7 +310,7 @@
       if(readings.some(list=>!list.length))return {called,tiles:[],marks:[]};
       if(stack){
         readings.push([1,3].map(rotation=>({...match(image,stack.slice(rotation).concat(stack.slice(0,rotation)),allowed),
-          quad:stack,coverage:faceCoverage(image,stack)})).filter(r=>r.tile).sort((a,b)=>a.error-b.error));
+          quad:stack,rotation,coverage:faceCoverage(image,stack)})).filter(r=>r.tile).sort((a,b)=>a.error-b.error));
       }
       if(readings.some(list=>!list.length))return {called,tiles:[],marks:[]};
       const best=readings.map(list=>list[0]);
@@ -339,7 +339,8 @@
         best.some(r=>r.tile.id===tiles[0].id&&r.coverage>=.50&&confident(r,.27,.12))&&
         !best.some(r=>r.tile.id!==tiles[0].id&&r.coverage>=.55&&confident(r,.28,.10));
       const marks=chosen.map((r,index)=>({
-        index:index+Number(closed),quad:r.quad,
+        index:index+Number(closed),quad:r.quad,rotation:r.rotation,
+        ...(r.rotation===undefined?{}:{region:'meld',orientation:r.rotation}),
         uncertain:!detectsWholeSet&&(r.coverage<.66||r.code!==best[index].code||!confident(r,.39,.034)||!valid(chosen))
       }));
       if(closed){
@@ -407,7 +408,11 @@
       rel(.50,-.51,.67,1.02,gold),
       rel(-.64,.65,1.28,.29,gold)
     ];
-    const active=rel(-.50,.83,1.0,.25,([r,g,b])=>r>224&&g>174&&r>b+32&&g>b+26)>.29;
+    const brightBar=rel(-.50,.83,1.0,.25,([r,g,b])=>r>224&&g>174&&r>b+32&&g>b+26)>.29;
+    // The self-turn bar in replays can be amber instead of bright yellow.
+    const amber=([r,g,b])=>r>205&&g>135&&r>g+25&&g>b+22;
+    const amberBar=rel(-.49,.82,.98,.045,amber)>.78&&rel(-.49,.88,.98,.045,amber)>.62;
+    const active=brightBar||amberBar;
     return {x,y,seats,active};
   }
   function doraRegions(image,view,pitch) {
@@ -442,8 +447,11 @@
       else runs.push([a,b]);
       return runs;
     },[]).find(([a,b])=>b-a>pitch*.53&&a>h*.018);
-    if(!first)return null;
-    const [y0,y1]=first.map(n=>n+top);
+    const edges=first??span(Array.from({length:Math.round(h*.155)},(_,j)=>{
+      const y=top+j;
+      return [.105,.865].every(x=>density(image,left+step*x,y,step*.04,1,ivory,3,1)>=2/3);
+    })).find(([a,b])=>b-a>pitch*.53&&a>h*.018);
+    const [y0,y1]=(edges??[h*.048,h*.118]).map(n=>n+top);
     return cells.map(([left,right])=>[left,y0,right-left,y1-y0]);
   }
   function doraRack(image,view,pitch,templates) {
@@ -530,8 +538,33 @@
     const marks=riichiMarks(image,hud,pitch);
     const rivers=[];
     const ready=[];
+    const declarations=Array(4).fill(undefined);
     const marksForReview=[];
     const man=t=>t?.id<9;
+    function coloredInk(quad){
+      const [a,b,c,d]=quad;
+      let ink=0;
+      for(const u of [.15,.30,.45,.60,.75,.85])for(const v of [.15,.30,.45,.60,.75,.85]){
+        const [r,g,bg]=pixel(image,(a.x*(1-u)+b.x*u)*(1-v)+(d.x*(1-u)+c.x*u)*v,
+          (a.y*(1-u)+b.y*u)*(1-v)+(d.y*(1-u)+c.y*u)*v);
+        ink+=Number(g>r+17&&g>bg+7&&g<170||r>g+29&&r>bg+28&&g<125);
+      }
+      return ink>=5;
+    }
+    function blankFace(quad,result) {
+      if(result.paper<176)return false;
+      const [a,b,c,d]=quad;
+      function level(u,v){
+        return light(pixel(image,(a.x*(1-u)+b.x*u)*(1-v)+(d.x*(1-u)+c.x*u)*v,
+          (a.y*(1-u)+b.y*u)*(1-v)+(d.y*(1-u)+c.y*u)*v));
+      }
+      const edges=[.22,.5,.78].map(t=>[
+        level(t,.12)-level(t,-.15),level(t,.87)-level(t,1.14),
+        level(.12,t)-level(-.14,t),level(.87,t)-level(1.14,t)
+      ]);
+      const boundary=Math.max(...edges[0].map((_,i)=>edges.reduce((sum,e)=>sum+e[i],0)/edges.length));
+      return boundary>=(result.paper>=204?12:result.paper>=181?24:34);
+    }
     const overlay=([r,g,b])=>b>110&&b>r+32&&b>g+12;
     function occlusion(quad){
       const [a,b,c,d]=quad;
@@ -557,7 +590,7 @@
           const sidewaysBase=riverQuad(hud,pitch,seat,row,offset,true);
           const sidewaysCoverage=faceCoverage(image,sidewaysBase);
           const mayTurn=!turned&&(marks[seat]!==false||sidewaysCoverage>=.55&&sidewaysCoverage-coverage>=.18);
-          const denseFace=coverage>=.24&&coverage<.32?match(image,base,templates):null;
+          const denseFace=coverage>=.20&&coverage<.32?match(image,base,templates):null;
           const rescued=denseFace?.tile?.id!==31&&confident(denseFace??{},.24,.09);
           if(!rescued&&coverage<.30&&(!mayTurn||sidewaysCoverage<.36)){
             if(occlusion(base))obscured.push(base);
@@ -573,11 +606,18 @@
             const cover=faceCoverage(image,quad);
             if(cover<.32)return null;
             const r=match(image,quad,templates);
-            return {...r,sideways,quad,rank:r.error+(1-cover)*.22+Math.abs(dx)*.25+Math.abs(dy)*.25};
+            const dim=r.paper<181&&!confident(r,.24,.095);
+            if(dim){
+              const sharp=r.paper>=176&&confident(r,.31,.080);
+              const colored=r.paper>=162&&cover>=.48&&confident(r,.36,.06)&&coloredInk(quad);
+              if(!sharp&&!colored)return null;
+            }
+            if(r.code==='5z'&&!blankFace(quad,r))return null;
+            return {...r,sideways,quad,dim,rank:r.error+(1-cover)*.22+Math.abs(dx)*.25+Math.abs(dy)*.25};
           };
           const center=rescued?{...denseFace,sideways:false,quad:base,rank:denseFace.error+(1-coverage)*.22}:tryTile(false,0,0);
           const variants=[center];
-          if(!confident(center??{},.25,.08)){
+          if(!confident(center??{},.25,.08)||center?.tile?.red||center?.code==='5z'){
             for(const dx of [-.055,0,.055])for(const dy of [-.085,-.043,0,.043,.085]){
               if(dx||dy)variants.push(tryTile(false,dx,dy));
               variants.push(tryTile(false,dx,dy,.10));
@@ -597,18 +637,42 @@
           const disputedMan=man(center?.tile)&&man(choice?.tile)&&center.code!==choice.code&&
             center.error<=.35&&center.rank-choice.rank<=.09;
           if(disputedMan&&center.error<=.31)choice=center;
+          if(!choice){
+            if(occlusion(base))obscured.push(base);
+            ended=true;offset++;continue;
+          }
           const field=seat===3?'own':'river'+logicalSeat;
           const quad=choice?.quad??base;
           const blocked=occlusion(quad);
-          const alternatives=picks.some(c=>c.code!==choice?.code&&c.rank-choice.rank<.020&&confident(c,.37,.035));
-          const uncertain=gap||blocked||disputedMan||!choice||!confident(choice,.37,.047)||alternatives;
+          const alternatives=picks.some(c=>c.code!==choice.code&&c.rank-choice.rank<.020&&confident(c,.37,.035));
+          const fragileMan=man(choice.tile)&&!confident(choice,.26,.09)&&picks.some(c=>
+            man(c.tile)&&c.code!==choice.code&&c.rank-choice.rank<.10&&confident(c,.39,.018));
+          const mixedRed=choice.tile.id<27&&choice.tile.id%9===4&&picks.some(c=>
+            c.tile.id===choice.tile.id&&c.tile.red!==choice.tile.red&&c.rank-choice.rank<.075&&confident(c,.40,.028));
+          const dimUncertain=choice.dim&&!picks.some(c=>c!==choice&&c.code===choice.code&&
+            c.rank-choice.rank<.044&&confident(c,.34,.070));
+          const uncertain=gap||blocked||dimUncertain||disputedMan||fragileMan||mixedRed||
+            !confident(choice,.37,.047)||alternatives||rescued&&coverage<.24;
+          const reason=blocked?'浮层遮挡':disputedMan||fragileMan?'万子牌面候选冲突':
+            mixedRed?'赤五与普通五候选冲突':uncertain?'牌面或牌河位置需核对':undefined;
           if(choice)for(const hidden of obscured.splice(0)){
-            marksForReview.push({field,index:river.length,quad:hidden,uncertain:true,occluded:true});
-            river.push({id:31,red:false});
+            marksForReview.push({field,seat:logicalSeat,index:river.length,row,slot:null,quad:hidden,uncertain:true,occluded:true,status:'occluded',reason:'浮层遮挡，无法读出牌面',riichi:false});
+            river.push(null);
           }
-          marksForReview.push({field,index:river.length,quad,uncertain,occluded:blocked});
+          const facing=picks.find(r=>!r.sideways);
+          const clearRotation=choice?.sideways&&(facing?.rank??1)-choice.rank>.055&&
+            confident(choice,.40,.10)&&picks.filter(r=>r.sideways&&r.code===choice.code).length>=2;
+          const riichi=Boolean(choice?.sideways&&!gap&&!blocked&&
+            (marks[seat]===true&&!uncertain||marks[seat]!==false&&clearRotation));
+          if(riichi)declarations[logicalSeat]=river.length+1;
+          marksForReview.push({field,seat:logicalSeat,index:river.length,row,slot,quad,uncertain,occluded:blocked,riichi,
+            region:'river-'+seat,orientation:([1,2,3,0][seat]+Number(Boolean(choice.sideways)))%4,
+            layoutUncertain:gap||rescued&&coverage<.24||choice.sideways&&!clearRotation&&uncertain,
+            edgeEvidence:!choice.dim&&choice.paper>=181&&confident(choice,.33,.07),
+            status:blocked?'occluded':uncertain?'uncertain':'read',reason,
+            confidence:{error:choice.error,margin:choice.margin},code:choice.code});
           turned ||= choice?.sideways;
-          river.push(choice?.tile??{id:31,red:false});
+          river.push(choice.tile);
           offset+=choice?.sideways?1.31:1;
         }
       }
@@ -616,11 +680,68 @@
       marksForReview.push({field:seat===3?'locked':'ready'+logicalSeat,quad:rectangle(hud.x+(dx-.2)*pitch,hud.y+(dy-.14)*pitch,.4*pitch,.28*pitch),uncertain:marks[seat]===null&&!turned||marks[seat]===false&&turned});
       ready.push(Boolean(marks[seat]||turned));rivers.push(river);
     }
-    return {ok:true,rivers,ready,marksForReview};
+    return {ok:true,rivers,ready,declarations,marksForReview};
   }
+  function auditBoard(board){
+    const {marks}=board;
+    for(const mark of marks)mark.issues=[];
+    const seen=[];
+    function fieldTiles(tiles,field,group){
+      const indexed=marks.filter(m=>m.field===field&&m.group===group);
+      for(const [index,tile] of tiles.entries()){
+        if(!tile)continue;
+        const mark=indexed.find(m=>m.index===index)??indexed[0];
+        if(mark)seen.push({tile,mark});
+      }
+    }
+    fieldTiles(board.hand,'hand');
+    fieldTiles(board.indicators,'indicators');
+    board.rivers.forEach((river,i)=>fieldTiles(river,i===3?'own':'river'+i));
+    board.melds.forEach((meld,i)=>fieldTiles(meld.tiles,'meld',i));
+    function flag(entries,reason){
+      const candidates=entries.filter(e=>!e.mark.corrected);
+      for(const {mark} of candidates.length?candidates:entries)
+        if(!mark.issues.includes(reason))mark.issues.push(reason);
+    }
+    if(board.three)for(const entry of seen)if(entry.tile.id>0&&entry.tile.id<8)
+      flag([entry],'三麻没有二至八万');
+    for(const id of new Set(seen.map(e=>e.tile.id))){
+      const copies=seen.filter(e=>e.tile.id===id);
+      if(copies.length>4)flag(copies,root.Riichi.name(id)+'识别超过四张');
+      const red=copies.filter(e=>e.tile.red);
+      if(red.length>1)flag(red,'同花色识别出多张赤五');
+    }
+    for(const [index,{tiles}] of board.melds.entries()){
+      const ids=tiles.map(t=>t.id).sort((a,b)=>a-b);
+      const same=ids.every(id=>id===ids[0]);
+      const sequence=!board.three&&ids.length===3&&ids[0]<27&&ids[0]%9<=6&&ids[1]===ids[0]+1&&ids[2]===ids[0]+2;
+      if(!same&&!sequence)flag(seen.filter(e=>e.mark.field==='meld'&&e.mark.group===index),'这组副露牌面互相冲突');
+    }
+    return board;
+  }
+
   const redraw='请重新上传自己摸牌或吃碰后、出牌前的完整雀魂截图。';
   function fail(code,detail,observed) {return {ok:false,code,message:detail+' '+redraw,observed};}
-  function inspect(image,templates) {
+  let buttons;
+  function readActionButtons(image){
+    buttons??=(root.ActionButtonSamples??[]).map(s=>({...s,rgb:Uint8Array.from(atob(s.data),c=>c.charCodeAt(0))}));
+    const found=[];
+    for(const sample of buttons){
+      let best=1;
+      for(const dx of [-.002,0,.002])for(const dy of [-.003,0,.003]){
+        let error=0;
+        for(let j=0;j<14;j++)for(let i=0;i<24;i++){
+          const rgb=pixel(image,image.width*(sample.x+dx+(i+.5)*sample.w/24),
+            image.height*(sample.y+dy+(j+.5)*sample.h/14));
+          for(let k=0;k<3;k++)error+=Math.abs(rgb[k]-sample.rgb[(j*24+i)*3+k]);
+        }
+        best=Math.min(best,error/(sample.rgb.length*255));
+      }
+      if(best<.037)found.push(sample.kind);
+    }
+    return found;
+  }
+  function inspect(image,templates,mode) {
     reference ??=root.MahjongSoulTemplates&&decodeTemplates(root.MahjongSoulTemplates);
     templates ??=reference;
     if(!templates||image.width<620||image.width/image.height<1.36||image.width/image.height>2.52)
@@ -631,7 +752,7 @@
     const hud=scoreboard(image,view,pitch);
     if(!hud)return fail('layout','无法定位牌桌中央的局况面板。');
     const indicators=doraRack(image,view,pitch,templates);
-    const observed={indicators,drawn:Boolean(hand?.draw),active:hud.active};
+    const observed={indicators,drawn:Boolean(hand?.draw),active:hud.active,buttons:readActionButtons(image)};
     const [left,opposite,right,self]=hud.seats;
     const topOpponent=Math.min(left,opposite,self)>.045&&right<.018?2:
       Math.min(right,opposite,self)>.045&&left<.018?0:-1;
@@ -641,9 +762,13 @@
     const timerInk=([r,g,b])=>r>165&&g>101&&r>g+8&&g>b+28;
     const timer=density(image,hud.x+4.7*pitch,view.bottom-3.7*pitch,2.8*pitch,1.35*pitch,timerInk,60,30);
     const timedDraw=hand?.count===13&&hand.draw&&hand.found.length===14&&timer>.034&&timer<.48;
-    const afterCall=Boolean(hand?.callCount&&hand.faceTop&&!hand.draw);
-    const tilesInHand=afterCall?hand.callCount:(hand?.count??13)+1;
-    const meldCount=(14-tilesInHand)/3;
+    const response=mode==='response'||observed.buttons.includes('skip')&&observed.buttons.includes('chi');
+    const afterCall=!response&&Boolean(hand?.callCount&&hand.faceTop&&!hand.draw);
+    const tilesInHand=response?hand?.found.length:afterCall?hand.callCount:(hand?.count??13)+1;
+    const meldCount=((response?13:14)-tilesInHand)/3;
+    if(response&&(!hand?.faceTop||hand.draw||hud.active||!Number.isInteger(meldCount)||meldCount<0||meldCount>4||
+      !hand.found.every((x,i)=>Math.abs(x-hand.start-i*pitch)<.12*pitch)))
+      return fail('response','无法确认无独立摸牌的响应手牌。',observed);
     const melds=hand?readOwnMelds(image,view,hand,meldCount,three,templates):null;
     const ownReplayChoice=afterCall&&melds?.length===meldCount&&Array.from({length:tilesInHand},(_,i)=>{
       const x=hand.start+(i+.12)*pitch;
@@ -651,26 +776,26 @@
         ([r,g,b])=>r>177&&r>g+45&&g>b+20,14,9);
     }).some(region=>region>.65);
     const frameHasQuad=Boolean(hand?.draw&&melds?.some(m=>m.closed&&indicators?.length>=2||m.added&&m.marks.every(mark=>!mark.uncertain)));
-    if(!hud.active&&!timedDraw&&!frameHasQuad&&!ownReplayChoice)return fail('turn','未能同时确认自家回合与独立摸牌。',observed);
-    if(hand?.hasMelds&&!hand.draw&&!afterCall)return fail('open-hand','检测到副露。可切换手动录入，分别填写未副露手牌与每组明副露。',observed);
+    if(!response&&!hud.active&&!timedDraw&&!frameHasQuad&&!ownReplayChoice)return fail('turn','未能同时确认自家回合与独立摸牌。',observed);
+    if(!response&&hand?.hasMelds&&!hand.draw&&!afterCall)return fail('open-hand','检测到副露。可切换手动录入，分别填写未副露手牌与每组明副露。',observed);
     if(Math.min(topOpponent===0?opposite:left,three?1:opposite,topOpponent===2?opposite:right,self)<.022)
       return fail('layout','四家座位或宝牌指示牌无法可靠确认。',observed);
-    if(!afterCall&&(!hand?.draw||!hand.faceTop||hand.found.length<hand.count+1))
+    if(!response&&!afterCall&&(!hand?.draw||!hand.faceTop||hand.found.length<hand.count+1))
       return fail('turn','未确认独立摸牌。',observed);
     const {start,faceTop,faceBottom,draw}=hand;
     const points=[];
     const reading=Array.from({length:tilesInHand},(_,i)=>{
-      const x=!afterCall&&i===hand.count?draw[0]:start+i*pitch;
+      const x=!response&&!afterCall&&i===hand.count?draw[0]:start+i*pitch;
       const rect=[x,faceTop,pitch*.985,faceBottom-faceTop];
       const tile=matchFace(image,rect,templates,.39,.054);
-      points.push({field:'hand',index:i,quad:rectangle(...rect),uncertain:!tile});
+      points.push({field:'hand',index:i,quad:rectangle(...rect),uncertain:!tile,region:'hand',orientation:0});
       return tile??match(image,rectangle(...rect),templates).tile??{id:31,red:false};
     });
     if(reading.some(t=>!t))return fail('hand','有手牌牌面无法可靠确认。',observed);
     observed.hand=reading;
     const table=readRivers(image,hud,pitch,templates,three,topOpponent);
     if(!table.ok)return fail('river',table.reason,observed);
-    const {rivers,ready}=table;
+    const {rivers,ready,declarations}=table;
     const rack=doraRegions(image,view,pitch);
     points.push({field:'indicators',quad:rectangle(...(rack?[rack[0][0],rack[0][1],rack[0][2]*5,rack[0][3]]:[0,view.top,image.width*.17,view.h*.14])),uncertain:!indicators});
     observed.indicators=indicators??[];
@@ -678,9 +803,20 @@
       return fail('meld-layout','无法定位自家吃碰牌面。请确保右下角副露完整可见。',observed);
     const meldMarks=(melds??[]).flatMap((group,i)=>group.marks.map(mark=>({...mark,field:'meld',group:i})));
     const marks=points.concat(table.marksForReview,meldMarks).map(({quad,...rest})=>({...rest,x:Math.min(...quad.map(p=>p.x))/image.width,y:Math.min(...quad.map(p=>p.y))/image.height,w:(Math.max(...quad.map(p=>p.x))-Math.min(...quad.map(p=>p.x)))/image.width,h:(Math.max(...quad.map(p=>p.y))-Math.min(...quad.map(p=>p.y)))/image.height}));
-    return {ok:true,...observed,rivers,ready,three,marks,afterCall,meldCount,melds};
+    points.concat(table.marksForReview,meldMarks).forEach(({quad,region,rotation=0},index)=>{
+      if(region)marks[index].crop=quad.slice(rotation).concat(quad.slice(0,rotation)).map(p=>[p.x/image.width,p.y/image.height]);
+    });
+    const board={ok:true,...observed,rivers,ready,declarations,three,marks,afterCall,meldCount,melds,phase:response?'response':'discard'};
+    if(response&&!mode){
+      const highlighted=marks.filter(m=>m.seat!==3&&m.index===rivers[m.seat]?.length-1&&m.field.startsWith('river')&&
+        density(image,(m.x-.007)*image.width,(m.y+m.h)*image.height,(m.w+.014)*image.width,.028*image.height,
+          ([r,g,b])=>r>202&&g>157&&r>b+60&&g>b+34,22,16)>.11);
+      if(highlighted.length===1)board.target=highlighted[0];
+      board.offered=observed.buttons.filter(button=>button!=='skip');
+    }
+    return auditBoard(board);
   }
-  root.BoardVision={sourceImage,inspect};
+  root.BoardVision={sourceImage,inspect,auditBoard,pixel,signature,compare};
   if(typeof module!=='undefined')module.exports={...root.BoardVision,rectangle,signature,match,decodeTemplates,
     diagnostics:{viewport,handGeometry,readOwnMelds,scoreboard,doraRegions,doraRack,readRivers,riichiMarks,riverQuad,faceCoverage,density,span,pixel,ivory}};
 })(globalThis);
