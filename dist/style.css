@@ -107,3 +107,12 @@ a{color:var(--mint)}
 #contribution-preview dl{display:grid;grid-template-columns:auto 1fr;gap:.25rem .75rem}
 #contribution-preview dd{margin:0}
 #contribution-preview button{margin-right:.5rem}
+.marker:hover,.marker:focus,.marker.uncertain{background:transparent}
+.marker.uncertain{border-color:#ffbf4a}
+.marker[aria-pressed=true]{outline:2px solid var(--mint);outline-offset:1px;z-index:1}
+.marker.declaration::after{content:"立";position:absolute;inset:auto 0 100% auto;background:var(--panel);color:var(--mint);font-size:.7rem;line-height:1}
+#correction:has(.correction-crop){grid-template-columns:minmax(80px,112px) minmax(0,1fr);align-items:start;gap:.7rem}
+.correction-crop{margin:0;text-align:center;min-width:0}
+.correction-crop canvas{display:block;width:100%;height:auto;max-height:170px;object-fit:contain;border:1px solid var(--line);border-radius:.4rem;background:var(--input)}
+.correction-options{display:grid;gap:.35rem;min-width:0}
+.correction-options>input{min-width:0}

@@ -194,10 +194,12 @@
   const preview=$('preview'),ctx=preview.getContext('2d');
   const learning=globalThis.BoardLearning;
   let reviewImage,learningEnabled=false,learningEpoch=0,contributionAvailable=false;
-  let failedImage;
+  let failedImage,originalBitmap;
   let uploadSequence=0;
   const inputs=['hand','indicators','own','extra','locked','river0','river1','river2','ready0','ready1','ready2'];
   function changeMode(isUpload,hideForm) {
+    originalBitmap?.close();
+    originalBitmap=undefined;
     reviewImage=undefined;
     failedImage=undefined;
     $('review-response').hidden=true;
@@ -261,18 +263,38 @@
       row(seat,river,(board.ready[i]?'已立直':'未立直')+' · '+(declaration?'第 '+declaration+' 张宣言':(river.length?'舍牌':'牌河为空')));
     }
   }
+  function correctionCrop(mark,label){
+    if(!originalBitmap)return null;
+    const {width,height}=originalBitmap;
+    const left=Math.max(0,Math.floor(mark.x*width)),top=Math.max(0,Math.floor(mark.y*height));
+    const w=Math.min(width-left,Math.ceil((mark.x+mark.w)*width)-left);
+    const h=Math.min(height-top,Math.ceil((mark.y+mark.h)*height)-top);
+    if(w<=0||h<=0)return null;
+    const figure=el('figure','correction-crop');
+    const crop=el('canvas');
+    crop.width=w;crop.height=h;
+    crop.setAttribute('aria-label',label+'的原图裁剪');
+    crop.getContext('2d').drawImage(originalBitmap,left,top,w,h,0,0,w,h);
+    figure.append(crop,el('figcaption','sub','原图放大'));
+    return figure;
+  }
   function drawMarkers(board){
     const layer=$('markers');layer.replaceChildren();
-    const editor=$('correction');editor.replaceChildren();
+    const correction=$('correction');correction.replaceChildren();
     for(const m of board.marks){
       const field=m.field, seat=field==='own'||field==='locked'?3:Number(field.slice(-1));
       const status=field==='locked'||field.startsWith('ready');
       const label=reviewLabel(board,m);
       const isDeclaration=board.declarations[seat]===m.index+1;
-      const mark=el('button','marker'+(needsReview(m)?' uncertain':''),needsReview(m)?'?':isDeclaration?'立':'');mark.type='button';mark.title=label;mark.setAttribute('aria-label','校对'+label);
+      const mark=el('button','marker'+(needsReview(m)?' uncertain':'')+(isDeclaration?' declaration':''));mark.type='button';mark.title=label;mark.setAttribute('aria-label','校对'+label);mark.setAttribute('aria-pressed','false');
       Object.assign(mark.style,{left:m.x*100+'%',top:m.y*100+'%',width:m.w*100+'%',height:m.h*100+'%'});
       mark.onclick=()=>{
-        editor.replaceChildren(el('strong','',label));
+        layer.querySelector?.('[aria-pressed="true"]')?.setAttribute('aria-pressed','false');
+        mark.setAttribute('aria-pressed','true');
+        const editor=el('div','correction-options');
+        const crop=correctionCrop(m,label);
+        correction.replaceChildren(...(crop?[crop,editor]:[editor]));
+        editor.append(el('strong','',label));
         for(const reason of [m.reason,...(m.issues??[])].filter(Boolean))editor.append(el('p','sub',reason));
         const values=field==='meld'?board.melds[m.group].tiles:field==='hand'?board.hand:field==='indicators'?board.indicators:board.rivers[seat];
         const remember=el('input');
@@ -437,11 +459,13 @@
           if(learningEnabled&&epoch===learningEpoch)learning.apply(source,board,samples);
         }
         reviewImage=source;
+        originalBitmap=image;image=undefined;
         acceptBoard(board);
       }
       else {
         if(globalThis.ActionAdvice&&['turn','open-hand'].includes(board.code)){
           failedImage=source;
+          originalBitmap=image;image=undefined;
           $('review-response').hidden=false;
         }
         setVisionStatus(board.message,true);

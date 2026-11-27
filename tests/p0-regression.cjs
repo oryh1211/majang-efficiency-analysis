@@ -101,7 +101,7 @@ class Element {
   setAttribute(key, value) { this.attributes[key] = value; }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
-  getContext() { return { drawImage() {} }; }
+  getContext() { return { drawImage: (...args) => { this.lastDraw = args; } }; }
 }
 
 async function checkCorrection() {
@@ -118,15 +118,23 @@ async function checkCorrection() {
     createImageBitmap: async value => value, setTimeout
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../dist/app.js'), 'utf8'), context);
-  get('file').events.change({ target: { files: [{ ...image('user-mixed-kan'), close() {} }] } });
+  let closed=false;
+  const original={...image('user-mixed-kan'), close() { closed=true; }};
+  get('file').events.change({ target: { files: [original] } });
   await new Promise(resolve => setTimeout(resolve, 20));
 
   const marker = title => get('markers').children.find(element => element.title === title);
-  const pick = name => get('correction').children.flatMap(e => e.children)
+  const editor=()=>get('correction').children.find(e=>e.className==='correction-options');
+  const pick = name => editor().children.flatMap(e => e.children)
     .find(tile => tile.title === name).events.click();
   assert.equal(get('results').children[0].children[0].textContent, '等待校对');
   const snapshot = ['hand', 'indicators', 'melds', 'river0', 'river1', 'river2'].map(id => get(id).value);
   marker('自家牌河第 3 张').onclick();
+  const crop=get('correction').children[0].children[0];
+  assert.equal(crop.attributes['aria-label'],'自家牌河第 3 张的原图裁剪');
+  assert.equal(crop.lastDraw[0],original);
+  assert(crop.width>0&&crop.height>0&&crop.width<original.width&&crop.height<original.height);
+  assert(!closed);
   pick('5万');
   assert.deepEqual(['hand', 'indicators', 'melds', 'river0', 'river1', 'river2'].map(id => get(id).value), snapshot);
   assert(!marker('自家牌河第 3 张').className.includes('uncertain'));
@@ -136,13 +144,14 @@ async function checkCorrection() {
   assert.equal(list().children.length, 3);
   const ownBefore=engine.parse(get('own').value);
   marker('自家牌河第 1 张').onclick();
-  get('correction').children.find(element=>element.textContent==='后移一张').onclick();
+  editor().children.find(element=>element.textContent==='后移一张').onclick();
   assert.deepEqual(engine.parse(get('own').value), [ownBefore[1],ownBefore[0],...ownBefore.slice(2)]);
   assert.deepEqual(['hand','indicators','melds','river0','river2'].map(id=>get(id).value),
     [snapshot[0],snapshot[1],snapshot[2],snapshot[3],snapshot[5]]);
   assert.equal(list().children.length,3);
 
   get('manual').events.click();
+  assert(closed);
   get('hand').value='19m12345p1234567s';
   get('river0').value='23z';
   get('river2').value='19m';
