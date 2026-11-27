@@ -1,0 +1,139 @@
+[
+  {
+    "id": "sample-holdc-0",
+    "page": "https://note.com/kyuuuuuuuuuso/n/n118072d2eba3",
+    "phase": "draw",
+    "three": true,
+    "hand": "23479p112456s11z1s",
+    "rivers": [
+      "325z9s1p1z1p",
+      "",
+      "1m3z9m7s4p4s",
+      "1p52z1m6z7p"
+    ],
+    "indicators": "6z",
+    "ready": [
+      false,
+      false,
+      true,
+      false
+    ],
+    "melds": [],
+    "image": "https://assets.st-note.com/img/1782729176-pL3OUtAJ8MFx27wYiWfeVbZK.png?width=1200"
+  },
+  {
+    "id": "sample-holdc-2",
+    "page": "https://note.com/kyuuuuuuuuuso/n/n118072d2eba3",
+    "phase": "other",
+    "three": true,
+    "hand": "111m133p567s1177z",
+    "rivers": [
+      "9m23z1s35z9p1s",
+      "",
+      "2613z2s9p8s3p",
+      "9m999s8p3s58p"
+    ],
+    "indicators": "2s",
+    "ready": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "melds": [],
+    "image": "https://assets.st-note.com/img/1782729813-k5v4NUWmP7Odca0MQXrGESqY.png?width=1200"
+  },
+  {
+    "id": "sample-holdd-4",
+    "page": "https://note.com/okuohouko/n/ne234c5c7354c",
+    "phase": "draw",
+    "three": false,
+    "hand": "44m4578p156s3z5m",
+    "rivers": [
+      "34z1m9s1s9s",
+      "24213z5s",
+      "1z7171m7p8s",
+      "34z2p89m83s"
+    ],
+    "indicators": "3m",
+    "ready": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "melds": [
+      {
+        "tiles": "555z",
+        "called": 1
+      }
+    ],
+    "image": "https://assets.st-note.com/img/1759508165-fjrsaLy8Xhe3CtOHT5vRY1NK.png?width=1200"
+  },
+  {
+    "id": "sample-holdd-5",
+    "page": "https://note.com/okuohouko/n/ne234c5c7354c",
+    "phase": "draw",
+    "three": false,
+    "hand": "77m33689p3407s66z2m",
+    "rivers": [
+      "1p",
+      "4z",
+      "3z",
+      ""
+    ],
+    "indicators": "2s",
+    "ready": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "melds": [],
+    "image": "https://assets.st-note.com/img/1759508165-Dr9tdnWle6MGTuavo01C7RxY.png?width=1200"
+  },
+  {
+    "id": "sample-holdd-6",
+    "page": "https://note.com/okuohouko/n/ne234c5c7354c",
+    "phase": "draw",
+    "three": false,
+    "hand": "236m2356p2309s12z1s",
+    "rivers": [
+      "3z9s",
+      "3z1s",
+      "1m",
+      "4z"
+    ],
+    "indicators": "8m",
+    "ready": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "melds": [],
+    "image": "https://assets.st-note.com/img/1759508165-1MZbyJhPOnE94zqfeVX8LuUi.png?width=1200"
+  },
+  {
+    "id": "sample-holda-1",
+    "page": "https://note.com/okuohouko/n/n06597f611232",
+    "phase": "draw",
+    "three": true,
+    "hand": "5679p123457s566z4s",
+    "rivers": [
+      "9m98p",
+      "",
+      "1m32z",
+      "1m27z"
+    ],
+    "indicators": "4s",
+    "ready": [
+      false,
+      false,
+      false,
+      false
+    ],
+    "melds": [],
+    "image": "https://assets.st-note.com/production/uploads/images/71009741/picture_pc_0a012bd64cef36959797229414b1326b.png?width=1200"
+  }
+]
